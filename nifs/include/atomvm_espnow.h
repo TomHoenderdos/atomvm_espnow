@@ -23,6 +23,7 @@ typedef struct espnow_port_data {
     uint8_t channel;
     int32_t owner_process_id;  // Process to receive RX/TX events
     GlobalContext *global;
+    int32_t port_process_id;  // This port, woken when an event is queued
 } espnow_port_data_t;
 
 /**

@@ -83,6 +83,15 @@ static QueueHandle_t s_event_queue = NULL;
 // ESP-NOW Callbacks - these run in WiFi task context
 //
 
+// Wakes the port so queued events reach the owner now, not on its next message.
+static void wake_port(void)
+{
+    espnow_port_data_t *data = s_port_data;
+    if (data && s_global) {
+        globalcontext_send_message_from_task(s_global, data->port_process_id, NormalMessage, OK_ATOM);
+    }
+}
+
 static void recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int data_len)
 {
     if (!recv_info || !recv_info->src_addr || !data || data_len < 0 || !s_event_queue) {
@@ -116,6 +125,7 @@ static void recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, i
         free(data_copy);
         return;
     }
+    wake_port();
 
     ESP_LOGD(TAG, "RX from %02x:%02x:%02x:%02x:%02x:%02x len=%d",
         recv_info->src_addr[0], recv_info->src_addr[1], recv_info->src_addr[2],
@@ -147,6 +157,8 @@ static void send_cb(const esp_now_send_info_t *tx_info, esp_now_send_status_t st
 
     if (xQueueSend(s_event_queue, &event, 0) != pdTRUE) {
         ESP_LOGW(TAG, "TX event drop: queue full");
+    } else {
+        wake_port();
     }
 
     ESP_LOGD(TAG, "TX status=%d", tx_status);
@@ -394,7 +406,9 @@ static NativeHandlerResult espnow_consume_mailbox(Context *ctx)
     }
 
     if (term_is_invalid_term(cmd)) {
-        ESP_LOGW(TAG, "Unknown message format, ignoring");
+        if (message != OK_ATOM) {
+            ESP_LOGW(TAG, "Unknown message format, ignoring");
+        }
         goto done;
     }
 
@@ -663,6 +677,7 @@ Context *atomvm_espnow_create_port(GlobalContext *global, term opts)
     port_data->channel = channel;
     port_data->owner_process_id = owner_pid;
     port_data->global = global;
+    port_data->port_process_id = ctx->process_id;
 
     ctx->native_handler = espnow_consume_mailbox;
     ctx->platform_data = port_data;

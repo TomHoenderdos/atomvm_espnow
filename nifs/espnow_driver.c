@@ -378,6 +378,20 @@ static void send_call_reply(Context *ctx, term pid, term ref, term reply)
     globalcontext_send_message(ctx->global, pid_id, reply_tuple);
 }
 
+// Replies with the current WiFi primary channel, or {error, Code}.
+static void reply_channel(Context *ctx, term pid, term ref)
+{
+    uint8_t primary = 0;
+    wifi_second_chan_t secondary = WIFI_SECOND_CHAN_NONE;
+    esp_err_t err = esp_wifi_get_channel(&primary, &secondary);
+
+    if (err != ESP_OK) {
+        send_call_reply(ctx, pid, ref, port_create_error_tuple(ctx, term_from_int(err)));
+    } else {
+        send_call_reply(ctx, pid, ref, term_from_int(primary));
+    }
+}
+
 static NativeHandlerResult espnow_consume_mailbox(Context *ctx)
 {
     Message *msg = mailbox_first(&ctx->mailbox);
@@ -409,6 +423,12 @@ static NativeHandlerResult espnow_consume_mailbox(Context *ctx)
         if (message != OK_ATOM) {
             ESP_LOGW(TAG, "Unknown message format, ignoring");
         }
+        goto done;
+    }
+
+    // get_channel - bare atom, as espnow:get_channel/1 has always sent it
+    if (term_is_atom(cmd) && globalcontext_is_term_equal_to_atom_string(ctx->global, cmd, get_channel_atom_str)) {
+        reply_channel(ctx, pid, ref);
         goto done;
     }
 
@@ -588,18 +608,9 @@ static NativeHandlerResult espnow_consume_mailbox(Context *ctx)
             }
         }
 
-        // get_channel - return current WiFi channel
+        // {get_channel} - return current WiFi channel
         if (globalcontext_is_term_equal_to_atom_string(ctx->global, cmd_name, get_channel_atom_str)) {
-            uint8_t primary = 0;
-            wifi_second_chan_t secondary = WIFI_SECOND_CHAN_NONE;
-            esp_err_t err = esp_wifi_get_channel(&primary, &secondary);
-            
-            if (err != ESP_OK) {
-                send_call_reply(ctx, pid, ref,
-                    port_create_error_tuple(ctx, term_from_int(err)));
-            } else {
-                send_call_reply(ctx, pid, ref, term_from_int(primary));
-            }
+            reply_channel(ctx, pid, ref);
             goto done;
         }
     }

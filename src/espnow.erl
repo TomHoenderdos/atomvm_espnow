@@ -90,7 +90,7 @@ peer_exists(Port, Mac) when is_port(Port), is_binary(Mac), byte_size(Mac) =:= 6 
 %% Note: When connected to an AP, channel is locked to the AP's channel.
 -spec get_channel(port()) -> non_neg_integer() | {error, term()}.
 get_channel(Port) when is_port(Port) ->
-    gen_server_call(Port, get_channel).
+    gen_server_call(Port, {get_channel}).
 
 %% Internal: Simple gen_server:call style implementation for ports
 gen_server_call(Port, Request) ->
